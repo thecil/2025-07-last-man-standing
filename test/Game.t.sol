@@ -33,7 +33,7 @@ contract GameTest is Test {
         vm.deal(maliciousActor, 10 ether);
 
         vm.startPrank(deployer);
-        game = new Game( 
+        game = new Game(
             INITIAL_CLAIM_FEE,
             GRACE_PERIOD,
             FEE_INCREASE_PERCENTAGE,
@@ -44,6 +44,35 @@ contract GameTest is Test {
 
     function testConstructor_RevertInvalidGracePeriod() public {
         vm.expectRevert("Game: Grace period must be greater than zero.");
-        new Game(INITIAL_CLAIM_FEE, 0, FEE_INCREASE_PERCENTAGE, PLATFORM_FEE_PERCENTAGE);
+        new Game(
+            INITIAL_CLAIM_FEE,
+            0,
+            FEE_INCREASE_PERCENTAGE,
+            PLATFORM_FEE_PERCENTAGE
+        );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              AUDIT TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_claimThrone() public {
+        address _currentKing = game.currentKing();
+        console2.log("Current King: ", _currentKing);
+        assertEq(
+            _currentKing,
+            address(0),
+            "Current King should be zero before claiming"
+        ); // Check that the current king is zero
+
+        vm.startPrank(player1);
+        vm.expectRevert("Game: You are already the king. No need to re-claim.");
+        game.claimThrone{value: INITIAL_CLAIM_FEE}();
+        vm.stopPrank();
+
+        // uint256 claimTimestamp = block.timestamp;
+        // assertEq(address(game).balance, INITIAL_CLAIM_FEE, "Contract should have balance equal to INITIAL_CLAIM_FEE"); // Check that the player received the initial claim fee
+        // assertEq(game.currentKing(), player1, "Player 1 should be current king"); // Check that the player is now the king
+        // assertEq(game.lastClaimTime(), claimTimestamp, "Last claim time should match the block timestamp, "); // Check that
     }
 }
