@@ -134,7 +134,9 @@ In contract `Game.sol`, the following pragma version is used: `^0.8.20`.
 **Recommended Mitigation**: For consistency and to prevent unexpected behavior in the future, it is recommended to remove the caret to lock the file onto a specific Solidity version.
 
 
-### [L-2] `nonReentrant` should be the first modifier at `Game::withdrawPlatformFees`.
+### [L-2] S - `nonReentrant` should be the first modifier at `Game::withdrawPlatformFees`.
+
+**Submit** https://codehawks.cyfrin.io/c/2025-07-last-man-standing/s/cmdtdwtgi0005l504d4xz8dk6
 
 **Description**:
 
@@ -152,9 +154,125 @@ The `Game::withdrawPlatformFees` function is defined as follows:
     function withdrawPlatformFees() external nonReentrant onlyOwner {
 ```
 
+### [L-3] S - The `Game::declareWinner` function emits the `Game::GameEnded` with incorrect `pot` value.
+
+**Submit**: https://codehawks.cyfrin.io/c/2025-07-last-man-standing/s/cmdte3sgw0005ia04x9jlbkaf
+
+**Description**:
+
+The `Game::declareWinner` function is used to declare a winner of the actual round once the grace perios has passed and emit the `Game::GameEnded` event.
+
+```javascript
+    function declareWinner() external gameNotEnded {
+        require(currentKing != address(0), "Game: No one has claimed the throne yet.");
+        require(
+            block.timestamp > lastClaimTime + gracePeriod,
+            "Game: Grace period has not expired yet."
+        );
+
+        gameEnded = true;
+
+        pendingWinnings[currentKing] = pendingWinnings[currentKing] + pot;
+        pot = 0; // Reset pot after assigning to winner's pending winnings
+
+        emit GameEnded(currentKing, pot, block.timestamp, gameRound);
+    }
+```
+
+The `pot` global value is reset to zero before emitting the `Game::GameEnded` event, making the `pot` value equals to zero when the event is emitted.
+
+**Proof of Concept**: The `Game::declareWinner` function emits the `Game::GameEnded` event with an incorrect `pot` value. 
+
+The `pot` global value is reset to zero before emitting the `Game::GameEnded` event, making the `pot` value equals to zero when the event is emitted.
+
+The following unit test demonstrate the game round functionality with a winner:
+
+```javascript 
+    function _claimThroneByUser(address _player, uint256 _fee) internal {
+        vm.startPrank(_player);
+        game.claimThrone{value: _fee}();
+        vm.stopPrank();
+    }
+
+    function test_game_round_with_winner() public {
+        // claim throne as player 1
+        _claimThroneByUser(player1, INITIAL_CLAIM_FEE);
+
+        vm.warp(block.timestamp + 1 hours);
+
+        uint256 expectedNewFee = game.claimFee() +
+            (game.claimFee() * FEE_INCREASE_PERCENTAGE) /
+            100;
+        // claim throne as player 2
+        _claimThroneByUser(player2, game.claimFee());
+        assertEq(game.claimFee(), expectedNewFee);
+
+        // will revert if grace period not reached
+        vm.expectRevert("Game: Grace period has not expired yet.");
+        game.declareWinner();
+        // increase time to finish the game round
+        vm.warp(
+            block.timestamp + game.getRemainingTime() + game.lastClaimTime()
+        );
+        // declare winner
+        game.declareWinner();
+
+        uint256 pendingWinAmount = game.pendingWinnings(player2);
+        uint256 player2BalanceBeforeWithdraw = player2.balance;
+        // withdraw winnings after declaring winner
+        vm.startPrank(player2);
+        game.withdrawWinnings();
+        vm.stopPrank();
+        assertEq(
+            player2.balance,
+            player2BalanceBeforeWithdraw + pendingWinAmount,
+            "Winner should receive the winnings."
+        );
+        assertEq(game.gameEnded(), true);
+    }
+```
+
+Executing the test with verbosity level 4, will show the emitted events during its execution and we can verify the incorrect `pot` value on the `Game::GameEnded`.
+
+```bash
+forge test --mt test_game_round_with_winner -vvvv
+```
+The test output will show the emitted event like this:
+
+```
+    +- [48801] Game::declareWinner()
+    +---- emit GameEnded(winner: player2: [0xEb0A3b7B96C1883858292F0039161abD287E3324], prizeAmount: 0, timestamp: 93602 [9.36e4], round: 1)
+```
+
+
+**Recommended Mitigation**: Snapshot the `pot` value before resetting it and pass it to the emitted event.
+
+```diff
+    function declareWinner() external gameNotEnded {
+        require(
+            currentKing != address(0),
+            "Game: No one has claimed the throne yet."
+        );
+        require(
+            block.timestamp > lastClaimTime + gracePeriod,
+            "Game: Grace period has not expired yet."
+        );
+
+        gameEnded = true;
+
+        pendingWinnings[currentKing] = pendingWinnings[currentKing] + pot;
++       uint256 actualPot = pot;
+        pot = 0; // Reset pot after assigning to winner's pending winnings
+-       emit GameEnded(currentKing, pot, block.timestamp, gameRound);
++       emit GameEnded(currentKing, actualPot, block.timestamp, gameRound);
+    }
+```
+
 ## INFORMATIONAL
 
-### [I-1] Missing `makefile` for better build process and maintenance.
+### [I-1] S - Missing `makefile` for better build process and maintenance.
+
+**Submit**: https://codehawks.cyfrin.io/c/2025-07-last-man-standing/s/cmdte9tlc0005k704eqnru3fq
 
 **Description**:
 
@@ -192,7 +310,9 @@ format :; forge fmt
 ```
 
 
-### [I-2] Missing `remmappings` values in `foundry.toml` configuration file for better maintainability.
+### [I-2] S - Missing `remmappings` values in `foundry.toml` configuration file for better maintainability.
+
+**Submit**: https://codehawks.cyfrin.io/c/2025-07-last-man-standing/s/cmdtenke90005ju0461hc308w
 
 **Description**: The `remappings` values in the `foundry.toml` configuration file should include all the remappings needed for better maintainability and readability of the codebase. This will help in reducing the chances of errors and making it easier for other developers to understand the project.
 

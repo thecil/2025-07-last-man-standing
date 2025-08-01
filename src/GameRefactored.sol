@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // @audit - [L-1] Unlocked Pragma.
 pragma solidity ^0.8.20;
+// @audit - [] Use named imports for easier maintenance and readability.
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -180,12 +181,12 @@ contract Game is Ownable {
      * If there's a previous king, a small portion of the new claim fee is sent to them.
      * A portion also goes to the platform owner, and the rest adds to the pot.
      */
-    // @audit - Unnecesary usage of `nonReentrant` modifier at `Game::claimThrone`.
+    // @audit - [I-3] Unnecesary usage of `nonReentrant` modifier at `Game::claimThrone`.
     function claimThrone() external payable gameNotEnded nonReentrant {
         // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(msg.value >= claimFee, "Game: Insufficient ETH sent to claim the throne.");
-        // @audit - Incorrect usage of comparison, leads to always revert since caller is not current king
-        require(msg.sender == currentKing, "Game: You are already the king. No need to re-claim.");
+        // @audit - [H-2] S - The `Game::claimThrone` function will always revert if called by a player who is not the current king, leading to a loss of control over the game.
+        require(msg.sender != currentKing, "Game: You are already the king. No need to re-claim.");
 
         uint256 sentAmount = msg.value;
         uint256 previousKingPayout = 0;
@@ -193,22 +194,16 @@ contract Game is Ownable {
         uint256 amountToPot = 0;
 
         // Calculate platform fee
-        // 0 = 1e17 * 0  = 0% of sentAmount?
         currentPlatformFee = (sentAmount * platformFeePercentage) / 100;
 
         // Defensive check to ensure platformFee doesn't exceed available amount after previousKingPayout
-        // @audit - currentPlatformFee > 1e17 - 0, the `previousKingPayout` is always  0
         if (currentPlatformFee > (sentAmount - previousKingPayout)) {
-            // @audit - at first player 0 = 1e17 - 0, so `previousKingPayout` is always 0
             currentPlatformFee = sentAmount - previousKingPayout;
         }
-        // @audit - first player, 0 = 0 + 1e17?
         platformFeesBalance = platformFeesBalance + currentPlatformFee;
 
         // Remaining amount goes to the pot
-        // @audit - at first player, 0 = 0 + 1e17?, so `amountToPot` is always 1e17?
         amountToPot = sentAmount - currentPlatformFee;
-        // @audit - first player, 0 = 0 + 1e17?
         pot = pot + amountToPot;
 
         // Update game state
@@ -236,8 +231,9 @@ contract Game is Ownable {
         gameEnded = true;
 
         pendingWinnings[currentKing] = pendingWinnings[currentKing] + pot;
+        uint256 actualPot = pot;
         pot = 0; // Reset pot after assigning to winner's pending winnings
-        // @audit - [L-3] The `Game::declareWinner` function emits the `Game::GameEnded` with incorrect `pot` value.
+        // @audit - since 'pot' is resseted to zero, event 'pot' value will also be zero
         emit GameEnded(currentKing, pot, block.timestamp, gameRound);
     }
 
@@ -249,7 +245,6 @@ contract Game is Ownable {
         uint256 amount = pendingWinnings[msg.sender];
         // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(amount > 0, "Game: No winnings to withdraw.");
-        // @audit - REENTRANCY ?
         (bool success,) = payable(msg.sender).call{value: amount}("");
         // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(success, "Game: Failed to withdraw winnings.");
