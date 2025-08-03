@@ -268,6 +268,19 @@ The test output will show the emitted event like this:
     }
 ```
 
+### [L-4] - Use named imports.
+
+**Submit**: 
+
+**Description**: Use named imports as they offer a number of [advantages](https://ethereum.stackexchange.com/questions/117100/why-do-many-solidity-projects-prefer-importing-specific-names-over-whole-modules/117173#117173) compared to importing the entire namespace.
+
+**Recommended Mitigation**: Replace your imports as follows:
+
+```diff
+- import "@openzeppelin/contracts/access/Ownable.sol";
++ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+```
+
 ## INFORMATIONAL
 
 ### [I-1] S - Missing `makefile` for better build process and maintenance.

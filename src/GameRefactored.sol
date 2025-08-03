@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 // @audit - [L-1] Unlocked Pragma.
 pragma solidity ^0.8.20;
-// @audit - [] Use named imports for easier maintenance and readability.
-
-import "@openzeppelin/contracts/access/Ownable.sol";
+// @audit - [L-4] - Use named imports.
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Game is Ownable {
     // --- State Variables ---
@@ -233,7 +232,7 @@ contract Game is Ownable {
         pendingWinnings[currentKing] = pendingWinnings[currentKing] + pot;
         uint256 actualPot = pot;
         pot = 0; // Reset pot after assigning to winner's pending winnings
-        // @audit - since 'pot' is resseted to zero, event 'pot' value will also be zero
+        // @audit - [L-3] S - The `Game::declareWinner` function emits the `Game::GameEnded` with incorrect `pot` value.
         emit GameEnded(currentKing, pot, block.timestamp, gameRound);
     }
 
