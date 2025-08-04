@@ -156,7 +156,6 @@ contract Game is Ownable {
         // Set deployer as owner
         // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(_initialClaimFee > 0, "Game: Initial claim fee must be greater than zero.");
-        // @audit - INFO - starting grace period should be greater than zero and higher than block.timestamp
         require(_gracePeriod > 0, "Game: Grace period must be greater than zero.");
         require(_feeIncreasePercentage <= 100, "Game: Fee increase percentage must be 0-100.");
         require(_platformFeePercentage <= 100, "Game: Platform fee percentage must be 0-100.");
@@ -180,7 +179,7 @@ contract Game is Ownable {
      * If there's a previous king, a small portion of the new claim fee is sent to them.
      * A portion also goes to the platform owner, and the rest adds to the pot.
      */
-    // @audit - [I-3] Unnecesary usage of `nonReentrant` modifier at `Game::claimThrone`.
+    // @audit - [I-3] S - Unnecesary usage of `nonReentrant` modifier at `Game::claimThrone`.
     function claimThrone() external payable gameNotEnded nonReentrant {
         // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(msg.value >= claimFee, "Game: Insufficient ETH sent to claim the throne.");

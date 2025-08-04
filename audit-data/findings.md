@@ -268,9 +268,9 @@ The test output will show the emitted event like this:
     }
 ```
 
-### [L-4] - Use named imports.
+### [L-4] S - Use named imports.
 
-**Submit**: 
+**Submit**: https://codehawks.cyfrin.io/c/2025-07-last-man-standing/s/cmdxfpv310005ld04w5vzh8t9
 
 **Description**: Use named imports as they offer a number of [advantages](https://ethereum.stackexchange.com/questions/117100/why-do-many-solidity-projects-prefer-importing-specific-names-over-whole-modules/117173#117173) compared to importing the entire namespace.
 
@@ -340,29 +340,123 @@ remappings = [
 ]
 ```
 
-### [I-3] Unnecesary usage of `nonReentrant` modifier at `Game::claimThrone`.
+### [I-3] S - Unnecesary usage of `nonReentrant` modifier at `Game::claimThrone`.
+
+**Submit**: https://codehawks.cyfrin.io/c/2025-07-last-man-standing/s/cmdxf0vbz0005l1045o6iqu0d
 
 **Description**:
 
 the `Game::claimThrone` payable function is used to pay the `claimFee` in order to become the `currentKing` of the actual round. This function does not make any external calls and can be safely called without the `nonReentrant` modifier.
 
+```javascript
+function claimThrone() external payable gameNotEnded nonReentrant {
+```
+
 Generally there is no need to use the `nonReentrant` modifier on a function that only deposits ETH, as long as it does not make any external calls.
 
 **Recommended Mitigation**: Remove the `nonReentrant` modifier from the `Game::claimThrone` funtion.
 
+```diff
+- function claimThrone() external payable gameNotEnded nonReentrant {
++ function claimThrone() external payable gameNotEnded {
+```
+
 ## OPTIMIZATIONS
 
-### [O-1] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+### [O-1] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+
+**Submit**: https://codehawks.cyfrin.io/c/2025-07-last-man-standing/s/cmdxg56u40005lf04blpcsbd7
 
 **Description**: As stated in the official release of (Solidity 0.8.4)[https://soliditylang.org/blog/2021/04/21/custom-errors/], utilizing custom errors can reduce runtime and deployment costs, as indicated by the following benchmark, while also improving clarity in error handling.
 
+
+**Proof of Concept**: 
+
+Lets take the `Game::nonReentrant` modifier as example:
+
+```javascript
+    modifier nonReentrant() {
+        require(!_locked, "ReentrancyGuard: reentrant call");
+        _locked = true;
+        _;
+        _locked = false;
+    }
+```
+This modifier requires the `_locked` value to be `false` in order to continue its logic.
+
 **Recommended Mitigation**: Consider update to solidity version 0.8.4 or higher and replacing all require statements with custom errors.
 
-### [O-2] Modifier invoked only once.
+Then you can add a custom error like this:
+
+```diff
++    error Game__ReentrancyGuardReentrantCall();
+
+    modifier nonReentrant() {
+-       require(!_locked, "ReentrancyGuard: reentrant call");
++       if(_locked){
++           revert Game__ReentrancyGuardReentrantCall();
++       }
+        _locked = true;
+        _;
+        _locked = false;
+    }
+```
+
+### [O-2] S - Modifier invoked only once.
+
+**Submit**: https://codehawks.cyfrin.io/c/2025-07-last-man-standing/s/cmdxgc8rp0005l804x5w98eu6
 
 **Description**: The `Game::gameEndedOnly` modifier is invoked only once, the logic of it can be moved to the `Game::resetGame` function since it is the only one requiring the modifier logic.
 
+```javascript
+    modifier gameEndedOnly() {
+        require(gameEnded, "Game: Game has not ended yet.");
+        _;
+    }
+```
+
+**Proof of Concept**:
+
+The original `Game::resetGame` function has a single invocation of the `gameEndedOnly` modifier.
+
+```javascript
+    function resetGame() external onlyOwner gameEndedOnly {
+        currentKing = address(0);
+        lastClaimTime = block.timestamp;
+        pot = 0;
+        claimFee = initialClaimFee;
+        gracePeriod = initialGracePeriod;
+        gameEnded = false;
+        gameRound = gameRound + 1;
+        // totalClaims is cumulative across rounds, not reset here, but could be if desired.
+
+        emit GameReset(gameRound, block.timestamp);
+    }
+```
+
 **Recommended Mitigation**: Consider removing the modifier or inlining the logic into the `Game::resetGame` function.
+
+```diff
+-    modifier gameEndedOnly() {
+-        require(gameEnded, "Game: Game has not ended yet.");
+-        _;
+-    }
+
+-   function resetGame() external onlyOwner gameEndedOnly {
++   function resetGame() external onlyOwner {
++       require(gameEnded, "Game: Game has not ended yet.");
+        currentKing = address(0);
+        lastClaimTime = block.timestamp;
+        pot = 0;
+        claimFee = initialClaimFee;
+        gracePeriod = initialGracePeriod;
+        gameEnded = false;
+        gameRound = gameRound + 1;
+        // totalClaims is cumulative across rounds, not reset here, but could be if desired.
+
+        emit GameReset(gameRound, block.timestamp);
+    }
+```
 
 ## GAS:
 
