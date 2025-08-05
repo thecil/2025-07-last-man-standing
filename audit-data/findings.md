@@ -361,6 +361,51 @@ Generally there is no need to use the `nonReentrant` modifier on a function that
 + function claimThrone() external payable gameNotEnded {
 ```
 
+### [I-4] S - `Game::withdrawWinnings` should follow CEI
+
+**Submit**: https://codehawks.cyfrin.io/c/2025-07-last-man-standing/s/cmdxgwwwo0005i304vql2udly
+
+**Description**:
+
+The `Game::withdrawWinnings` function does have the `nonReentrant` modifier to avoid reentrancy attacks, which provide security for the function execution.
+
+Still, it's best to keep code clean and follow CEI (Checks, Effects, Interactions).
+
+**Proof of Concept**:
+
+The `Game::withdrawWinnings` function is currently written as follows:
+
+```javascript
+    function withdrawWinnings() external nonReentrant {
+        uint256 amount = pendingWinnings[msg.sender];
+        require(amount > 0, "Game: No winnings to withdraw.");
+        (bool success,) = payable(msg.sender).call{value: amount}("");
+        require(success, "Game: Failed to withdraw winnings.");
+@>      pendingWinnings[msg.sender] = 0;
+
+        emit WinningsWithdrawn(msg.sender, amount);
+    }
+```
+
+**Recommended Mitigation**: 
+
+Move the `pendingWinnings[msg.sender] = 0;` before transfering the winnings. This ensures that the `pendingWinnings` is updated before any further operations are performed.
+
+```diff
+    function withdrawWinnings() external nonReentrant {
+        // Checks
+        uint256 amount = pendingWinnings[msg.sender];
+        require(amount > 0, "Game: No winnings to withdraw.");
+        // Effects
++       pendingWinnings[msg.sender] = 0;
+        // Interactions
+        (bool success,) = payable(msg.sender).call{value: amount}("");
+        require(success, "Game: Failed to withdraw winnings.");
+-       pendingWinnings[msg.sender] = 0;
+        emit WinningsWithdrawn(msg.sender, amount);
+    }
+```
+
 ## OPTIMIZATIONS
 
 ### [O-1] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.

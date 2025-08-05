@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-// @audit - [L-1] Unlocked Pragma.
+// @audit - [L-1] S - Unlocked Pragma.
 pragma solidity ^0.8.20;
-// @audit - [L-4] - Use named imports.
+// @audit - [L-4] S - Use named imports.
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Game is Ownable {
@@ -104,7 +104,7 @@ contract Game is Ownable {
      * @dev Throws if the game has already ended.
      */
     modifier gameNotEnded() {
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(!gameEnded, "Game: Game has already ended. Reset to play again.");
         _;
     }
@@ -113,7 +113,7 @@ contract Game is Ownable {
      * @dev Throws if the game has not yet ended.
      */
     modifier gameEndedOnly() {
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(gameEnded, "Game: Game has not ended yet.");
         _;
     }
@@ -123,7 +123,7 @@ contract Game is Ownable {
      * @param _percentage The percentage value to validate.
      */
     modifier isValidPercentage(uint256 _percentage) {
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(_percentage <= 100, "Game: Percentage must be 0-100.");
         _;
     }
@@ -133,7 +133,7 @@ contract Game is Ownable {
      * This is a manual implementation of a reentrancy guard.
      */
     modifier nonReentrant() {
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(!_locked, "ReentrancyGuard: reentrant call");
         _locked = true;
         _;
@@ -154,7 +154,7 @@ contract Game is Ownable {
         uint256 _platformFeePercentage
     ) Ownable(msg.sender) {
         // Set deployer as owner
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(_initialClaimFee > 0, "Game: Initial claim fee must be greater than zero.");
         require(_gracePeriod > 0, "Game: Grace period must be greater than zero.");
         require(_feeIncreasePercentage <= 100, "Game: Fee increase percentage must be 0-100.");
@@ -181,7 +181,7 @@ contract Game is Ownable {
      */
     // @audit - [I-3] S - Unnecesary usage of `nonReentrant` modifier at `Game::claimThrone`.
     function claimThrone() external payable gameNotEnded nonReentrant {
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(msg.value >= claimFee, "Game: Insufficient ETH sent to claim the throne.");
         // @audit - [H-2] S - The `Game::claimThrone` function will always revert if called by a player who is not the current king, leading to a loss of control over the game.
         require(msg.sender != currentKing, "Game: You are already the king. No need to re-claim.");
@@ -195,6 +195,7 @@ contract Game is Ownable {
         currentPlatformFee = (sentAmount * platformFeePercentage) / 100;
 
         // Defensive check to ensure platformFee doesn't exceed available amount after previousKingPayout
+        // @audit - previousKingPayout is always 0 because it's only set once at the beginning
         if (currentPlatformFee > (sentAmount - previousKingPayout)) {
             currentPlatformFee = sentAmount - previousKingPayout;
         }
@@ -222,7 +223,7 @@ contract Game is Ownable {
      * The pot is then made available for the winner to withdraw.
      */
     function declareWinner() external gameNotEnded {
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(currentKing != address(0), "Game: No one has claimed the throne yet.");
         require(block.timestamp > lastClaimTime + gracePeriod, "Game: Grace period has not expired yet.");
 
@@ -232,7 +233,7 @@ contract Game is Ownable {
         uint256 actualPot = pot;
         pot = 0; // Reset pot after assigning to winner's pending winnings
         // @audit - [L-3] S - The `Game::declareWinner` function emits the `Game::GameEnded` with incorrect `pot` value.
-        emit GameEnded(currentKing, pot, block.timestamp, gameRound);
+        emit GameEnded(currentKing, actualPot, block.timestamp, gameRound);
     }
 
     /**
@@ -241,12 +242,12 @@ contract Game is Ownable {
      */
     function withdrawWinnings() external nonReentrant {
         uint256 amount = pendingWinnings[msg.sender];
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(amount > 0, "Game: No winnings to withdraw.");
         (bool success,) = payable(msg.sender).call{value: amount}("");
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(success, "Game: Failed to withdraw winnings.");
-
+        // @audit [I-4] S - `Game::withdrawWinnings` should follow CEI
         pendingWinnings[msg.sender] = 0;
 
         emit WinningsWithdrawn(msg.sender, amount);
@@ -274,7 +275,7 @@ contract Game is Ownable {
      * @param _newGracePeriod The new grace period in seconds.
      */
     function updateGracePeriod(uint256 _newGracePeriod) external onlyOwner {
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(_newGracePeriod > 0, "Game: New grace period must be greater than zero.");
         gracePeriod = _newGracePeriod;
         emit GracePeriodUpdated(_newGracePeriod);
@@ -290,7 +291,7 @@ contract Game is Ownable {
         onlyOwner
         isValidPercentage(_newFeeIncreasePercentage)
     {
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(_newInitialClaimFee > 0, "Game: New initial claim fee must be greater than zero.");
         initialClaimFee = _newInitialClaimFee;
         feeIncreasePercentage = _newFeeIncreasePercentage;
@@ -314,10 +315,10 @@ contract Game is Ownable {
      * @dev Allows the contract owner to withdraw accumulated platform fees.
      * Uses a secure withdraw pattern with a manual reentrancy guard.
      */
-    // @audit - [L-2] `nonReentrant` should be the first modifier at `Game::withdrawPlatformFees`.
+    // @audit - [L-2] S - `nonReentrant` should be the first modifier at `Game::withdrawPlatformFees`.
     function withdrawPlatformFees() external onlyOwner nonReentrant {
         uint256 amount = platformFeesBalance;
-        // @audit - [I-2] Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
+        // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(amount > 0, "Game: No platform fees to withdraw.");
 
         platformFeesBalance = 0;
