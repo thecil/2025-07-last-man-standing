@@ -46,7 +46,11 @@ contract Game is Ownable {
      * @param timestamp The block timestamp when the claim occurred.
      */
     event ThroneClaimed(
-        address indexed newKing, uint256 claimAmount, uint256 newClaimFee, uint256 newPot, uint256 timestamp
+        address indexed newKing,
+        uint256 claimAmount,
+        uint256 newClaimFee,
+        uint256 newPot,
+        uint256 timestamp
     );
 
     /**
@@ -56,7 +60,12 @@ contract Game is Ownable {
      * @param timestamp The block timestamp when the winner was declared.
      * @param round The game round that just ended.
      */
-    event GameEnded(address indexed winner, uint256 prizeAmount, uint256 timestamp, uint256 round);
+    event GameEnded(
+        address indexed winner,
+        uint256 prizeAmount,
+        uint256 timestamp,
+        uint256 round
+    );
 
     /**
      * @dev Emitted when a winner successfully withdraws their prize.
@@ -90,7 +99,10 @@ contract Game is Ownable {
      * @param newInitialClaimFee The new initial claim fee.
      * @param newFeeIncreasePercentage The new fee increase percentage.
      */
-    event ClaimFeeParametersUpdated(uint256 newInitialClaimFee, uint256 newFeeIncreasePercentage);
+    event ClaimFeeParametersUpdated(
+        uint256 newInitialClaimFee,
+        uint256 newFeeIncreasePercentage
+    );
 
     /**
      * @dev Emitted when the platform fee percentage is updated by the owner.
@@ -105,7 +117,10 @@ contract Game is Ownable {
      */
     modifier gameNotEnded() {
         // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
-        require(!gameEnded, "Game: Game has already ended. Reset to play again.");
+        require(
+            !gameEnded,
+            "Game: Game has already ended. Reset to play again."
+        );
         _;
     }
 
@@ -155,10 +170,22 @@ contract Game is Ownable {
     ) Ownable(msg.sender) {
         // Set deployer as owner
         // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
-        require(_initialClaimFee > 0, "Game: Initial claim fee must be greater than zero.");
-        require(_gracePeriod > 0, "Game: Grace period must be greater than zero.");
-        require(_feeIncreasePercentage <= 100, "Game: Fee increase percentage must be 0-100.");
-        require(_platformFeePercentage <= 100, "Game: Platform fee percentage must be 0-100.");
+        require(
+            _initialClaimFee > 0,
+            "Game: Initial claim fee must be greater than zero."
+        );
+        require(
+            _gracePeriod > 0,
+            "Game: Grace period must be greater than zero."
+        );
+        require(
+            _feeIncreasePercentage <= 100,
+            "Game: Fee increase percentage must be 0-100."
+        );
+        require(
+            _platformFeePercentage <= 100,
+            "Game: Platform fee percentage must be 0-100."
+        );
 
         initialClaimFee = _initialClaimFee;
         initialGracePeriod = _gracePeriod;
@@ -174,6 +201,12 @@ contract Game is Ownable {
         // currentKing starts as address(0) until first claim
     }
 
+    mapping(address player => uint256 payoutAmount) public s_previousPayouts;
+
+    function getPreviousPayout(address player) public view returns (uint256) {
+        return s_previousPayouts[player];
+    }
+
     /**
      * @dev Allows a player to claim the throne by sending the required claim fee.
      * If there's a previous king, a small portion of the new claim fee is sent to them.
@@ -182,12 +215,18 @@ contract Game is Ownable {
     // @audit - [I-3] S - Unnecesary usage of `nonReentrant` modifier at `Game::claimThrone`.
     function claimThrone() external payable gameNotEnded nonReentrant {
         // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
-        require(msg.value >= claimFee, "Game: Insufficient ETH sent to claim the throne.");
+        require(
+            msg.value >= claimFee,
+            "Game: Insufficient ETH sent to claim the throne."
+        );
         // @audit - [H-2] S - The `Game::claimThrone` function will always revert if called by a player who is not the current king, leading to a loss of control over the game.
-        require(msg.sender != currentKing, "Game: You are already the king. No need to re-claim.");
+        require(
+            msg.sender != currentKing,
+            "Game: You are already the king. No need to re-claim."
+        );
 
         uint256 sentAmount = msg.value;
-        uint256 previousKingPayout = 0;
+        uint256 previousKingPayout = s_previousPayouts[currentKing];
         uint256 currentPlatformFee = 0;
         uint256 amountToPot = 0;
 
@@ -195,7 +234,7 @@ contract Game is Ownable {
         currentPlatformFee = (sentAmount * platformFeePercentage) / 100;
 
         // Defensive check to ensure platformFee doesn't exceed available amount after previousKingPayout
-        // @audit - previousKingPayout is always 0 because it's only set once at the beginning
+        // @audit [M-1] - `Game::previousKingPayout` is always 0 because it's only set once, making it unnecesary for this check.
         if (currentPlatformFee > (sentAmount - previousKingPayout)) {
             currentPlatformFee = sentAmount - previousKingPayout;
         }
@@ -206,6 +245,7 @@ contract Game is Ownable {
         pot = pot + amountToPot;
 
         // Update game state
+        s_previousPayouts[msg.sender] = sentAmount;
         currentKing = msg.sender;
         lastClaimTime = block.timestamp;
         playerClaimCount[msg.sender] = playerClaimCount[msg.sender] + 1;
@@ -214,7 +254,13 @@ contract Game is Ownable {
         // Increase the claim fee for the next player
         claimFee = claimFee + (claimFee * feeIncreasePercentage) / 100;
 
-        emit ThroneClaimed(msg.sender, sentAmount, claimFee, pot, block.timestamp);
+        emit ThroneClaimed(
+            msg.sender,
+            sentAmount,
+            claimFee,
+            pot,
+            block.timestamp
+        );
     }
 
     /**
@@ -224,8 +270,14 @@ contract Game is Ownable {
      */
     function declareWinner() external gameNotEnded {
         // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
-        require(currentKing != address(0), "Game: No one has claimed the throne yet.");
-        require(block.timestamp > lastClaimTime + gracePeriod, "Game: Grace period has not expired yet.");
+        require(
+            currentKing != address(0),
+            "Game: No one has claimed the throne yet."
+        );
+        require(
+            block.timestamp > lastClaimTime + gracePeriod,
+            "Game: Grace period has not expired yet."
+        );
 
         gameEnded = true;
 
@@ -244,7 +296,7 @@ contract Game is Ownable {
         uint256 amount = pendingWinnings[msg.sender];
         // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(amount > 0, "Game: No winnings to withdraw.");
-        (bool success,) = payable(msg.sender).call{value: amount}("");
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
         // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
         require(success, "Game: Failed to withdraw winnings.");
         // @audit [I-4] S - `Game::withdrawWinnings` should follow CEI
@@ -276,7 +328,10 @@ contract Game is Ownable {
      */
     function updateGracePeriod(uint256 _newGracePeriod) external onlyOwner {
         // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
-        require(_newGracePeriod > 0, "Game: New grace period must be greater than zero.");
+        require(
+            _newGracePeriod > 0,
+            "Game: New grace period must be greater than zero."
+        );
         gracePeriod = _newGracePeriod;
         emit GracePeriodUpdated(_newGracePeriod);
     }
@@ -286,27 +341,30 @@ contract Game is Ownable {
      * @param _newInitialClaimFee The new initial claim fee.
      * @param _newFeeIncreasePercentage The new fee increase percentage (0-100).
      */
-    function updateClaimFeeParameters(uint256 _newInitialClaimFee, uint256 _newFeeIncreasePercentage)
-        external
-        onlyOwner
-        isValidPercentage(_newFeeIncreasePercentage)
-    {
+    function updateClaimFeeParameters(
+        uint256 _newInitialClaimFee,
+        uint256 _newFeeIncreasePercentage
+    ) external onlyOwner isValidPercentage(_newFeeIncreasePercentage) {
         // @audit - [I-2] S - Replace `require` Statements with Custom Errors, only if solc version is 0.8.4 or higher.
-        require(_newInitialClaimFee > 0, "Game: New initial claim fee must be greater than zero.");
+        require(
+            _newInitialClaimFee > 0,
+            "Game: New initial claim fee must be greater than zero."
+        );
         initialClaimFee = _newInitialClaimFee;
         feeIncreasePercentage = _newFeeIncreasePercentage;
-        emit ClaimFeeParametersUpdated(_newInitialClaimFee, _newFeeIncreasePercentage);
+        emit ClaimFeeParametersUpdated(
+            _newInitialClaimFee,
+            _newFeeIncreasePercentage
+        );
     }
 
     /**
      * @dev Allows the contract owner to update the platform fee percentage.
      * @param _newPlatformFeePercentage The new platform fee percentage (0-100).
      */
-    function updatePlatformFeePercentage(uint256 _newPlatformFeePercentage)
-        external
-        onlyOwner
-        isValidPercentage(_newPlatformFeePercentage)
-    {
+    function updatePlatformFeePercentage(
+        uint256 _newPlatformFeePercentage
+    ) external onlyOwner isValidPercentage(_newPlatformFeePercentage) {
         platformFeePercentage = _newPlatformFeePercentage;
         emit PlatformFeePercentageUpdated(_newPlatformFeePercentage);
     }
@@ -323,7 +381,7 @@ contract Game is Ownable {
 
         platformFeesBalance = 0;
 
-        (bool success,) = payable(owner()).call{value: amount}("");
+        (bool success, ) = payable(owner()).call{value: amount}("");
         require(success, "Game: Failed to withdraw platform fees.");
 
         emit PlatformFeesWithdrawn(owner(), amount);

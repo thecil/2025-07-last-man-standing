@@ -116,8 +116,11 @@ The following unit test will demonstrate how the function reverts when called by
 ```
 
 
-## MEDIUM
+### [H-3] Sequential Fee Calculations Lead to Lost Platform Revenue Due to Precision Loss
 
+The `Game` contract calculates fees using sequential percentage calculations with integer division. This approach leads to precision loss as each division operation rounds down, particularly affecting small transactions or those with low percentage fees.
+
+## MEDIUM
 
 ## LOW
 
@@ -405,6 +408,99 @@ Move the `pendingWinnings[msg.sender] = 0;` before transfering the winnings. Thi
         emit WinningsWithdrawn(msg.sender, amount);
     }
 ```
+
+
+### [I-5] - At `Game::claimThrone` function, the `Game::previousKingPayout` variable is always 0 because it's only set once, making it unnecessary for its check.
+
+**Submit**: 
+
+**Description**: In the `Game::claimThrone` function, the `previousKingPayout` variable is always set to 0 because it's only set once. This makes it unnecessary for this check since the `sentAmount - previousKingPayout` will always be calculated as `msg.value - 0`.
+
+By the moment of this audit, the actual logic does not break the game logic. However, it's a good practice to remove unnecessary variables and checks to improve code readability and maintainability.
+
+```javascript
+    function claimThrone() external payable gameNotEnded nonReentrant {
+        require(msg.value >= claimFee, "Game: Insufficient ETH sent to claim the throne.");
+        require(msg.sender == currentKing, "Game: You are already the king. No need to re-claim.");
+
+        uint256 sentAmount = msg.value;
+@>      uint256 previousKingPayout = 0;
+        uint256 currentPlatformFee = 0;
+        uint256 amountToPot = 0;
+
+        // Calculate platform fee
+        currentPlatformFee = (sentAmount * platformFeePercentage) / 100;
+
+        // Defensive check to ensure platformFee doesn't exceed available amount after previousKingPayout
+@>      if (currentPlatformFee > (sentAmount - previousKingPayout)) {
+@>          currentPlatformFee = sentAmount - previousKingPayout;
+        }
+        platformFeesBalance = platformFeesBalance + currentPlatformFee;
+
+        // Remaining amount goes to the pot
+        amountToPot = sentAmount - currentPlatformFee;
+        pot = pot + amountToPot;
+
+        // Update game state
+        currentKing = msg.sender;
+        lastClaimTime = block.timestamp;
+        playerClaimCount[msg.sender] = playerClaimCount[msg.sender] + 1;
+        totalClaims = totalClaims + 1;
+
+        // Increase the claim fee for the next player
+        claimFee = claimFee + (claimFee * feeIncreasePercentage) / 100;
+
+        emit ThroneClaimed(msg.sender, sentAmount, claimFee, pot, block.timestamp);
+    }
+```
+
+**Recommended Mitigation**:
+
+1. Remove the `previousKingPayout` variable and harmonize the rest of the function to fulfill this refactor;
+2. If the `previousKingPayout` variable is necessary for some reason, consider adding a mapping to keep track of previous king payouts, and retough the logic for the defensive check.
+
+The following code give an example on refactoring the `previousKingPayout` logic by using a mapping, but does not offer any improvements. This is just a starting point and should be further developed based on the specific requirements of the game. 
+
+```diff
++   mapping(address player => uint256 payoutAmount) public s_previousPayouts;
+
+    function claimThrone() external payable gameNotEnded nonReentrant {
+        require(msg.value >= claimFee, "Game: Insufficient ETH sent to claim the throne.");
+        require(msg.sender == currentKing, "Game: You are already the king. No need to re-claim.");
+
+        uint256 sentAmount = msg.value;
+-       uint256 previousKingPayout = 0;
++       uint256 previousKingPayout = s_previousPayouts[currentKing];
+        uint256 currentPlatformFee = 0;
+        uint256 amountToPot = 0;
+
+        // Calculate platform fee
+        currentPlatformFee = (sentAmount * platformFeePercentage) / 100;
+
+        // Defensive check to ensure platformFee doesn't exceed available amount after previousKingPayout
+        if (currentPlatformFee > (sentAmount - previousKingPayout)) {
+            currentPlatformFee = sentAmount - previousKingPayout;
+        }
+        platformFeesBalance = platformFeesBalance + currentPlatformFee;
+
+        // Remaining amount goes to the pot
+        amountToPot = sentAmount - currentPlatformFee;
+        pot = pot + amountToPot;
+
+        // Update game state
++       s_previousPayouts[msg.sender] = sentAmount;
+        currentKing = msg.sender;
+        lastClaimTime = block.timestamp;
+        playerClaimCount[msg.sender] = playerClaimCount[msg.sender] + 1;
+        totalClaims = totalClaims + 1;
+
+        // Increase the claim fee for the next player
+        claimFee = claimFee + (claimFee * feeIncreasePercentage) / 100;
+
+        emit ThroneClaimed(msg.sender, sentAmount, claimFee, pot, block.timestamp);
+    }
+```
+
 
 ## OPTIMIZATIONS
 
